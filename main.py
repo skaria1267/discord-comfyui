@@ -307,7 +307,7 @@ async def comfy_command(
             'height': height,
             'steps': steps,
             'cfg_scale': cfg_scale,
-            'seed': seed or -1,
+            'seed': seed if seed is not None else random.randint(0, 2147483647),
             'sampler_name': SAMPLERS[0] if SAMPLERS else 'euler',
             'scheduler': SCHEDULERS[0] if SCHEDULERS else 'normal'
         }
@@ -375,7 +375,8 @@ async def panel_command(interaction: discord.Interaction):
             'cfg_scale': 7.0,
             'sampler': SAMPLERS[0] if SAMPLERS else 'euler',
             'scheduler': SCHEDULERS[0] if SCHEDULERS else 'normal',
-            'preset': None
+            'preset': None,
+            'seed': random.randint(0, 2147483647)
         }
         save_user_settings(user_settings)
 
@@ -399,6 +400,7 @@ async def panel_command(interaction: discord.Interaction):
     embed.add_field(name='尺寸', value=size_display, inline=True)
     embed.add_field(name='步数', value=str(state.get('steps', 20)), inline=True)
     embed.add_field(name='CFG', value=str(state.get('cfg_scale', 7.0)), inline=True)
+    embed.add_field(name='种子', value=str(state.get('seed', random.randint(0, 2147483647))), inline=True)
     embed.add_field(name='采样器', value=state.get('sampler', 'euler'), inline=True)
     embed.add_field(name='调度器', value=state.get('scheduler', 'normal'), inline=True)
     embed.add_field(name='预设', value=state.get('preset', '未选择'), inline=True)
@@ -736,13 +738,23 @@ async def on_interaction(interaction: discord.Interaction):
             max_length=5
         )
 
+        seed_input = discord.ui.TextInput(
+            label='种子 (Seed)',
+            placeholder='输入种子值 (0-2147483647)',
+            default=str(state.get('seed', random.randint(0, 2147483647))),
+            required=True,
+            max_length=10
+        )
+
         modal.add_item(steps_input)
         modal.add_item(cfg_input)
+        modal.add_item(seed_input)
 
         async def params_modal_submit(modal_interaction: discord.Interaction):
             try:
                 new_steps = int(steps_input.value)
                 new_cfg = float(cfg_input.value)
+                new_seed = int(seed_input.value)
 
                 if new_steps < 1 or new_steps > 150:
                     await modal_interaction.response.send_message(
@@ -758,8 +770,16 @@ async def on_interaction(interaction: discord.Interaction):
                     )
                     return
 
+                if new_seed < 0 or new_seed > 2147483647:
+                    await modal_interaction.response.send_message(
+                        '❌ 种子必须在 0 到 2147483647 之间',
+                        ephemeral=True
+                    )
+                    return
+
                 state['steps'] = new_steps
                 state['cfg_scale'] = new_cfg
+                state['seed'] = new_seed
 
                 await update_panel(modal_interaction, state)
 
@@ -835,7 +855,7 @@ async def on_interaction(interaction: discord.Interaction):
                     'cfg_scale': state.get('cfg_scale', 7.0),
                     'sampler_name': state.get('sampler', SAMPLERS[0] if SAMPLERS else 'euler'),
                     'scheduler': state.get('scheduler', SCHEDULERS[0] if SCHEDULERS else 'normal'),
-                    'seed': -1
+                    'seed': state.get('seed', random.randint(0, 2147483647))
                 }
             }
 
@@ -872,6 +892,7 @@ async def update_panel(interaction: discord.Interaction, state: Dict):
     embed.add_field(name='尺寸', value=size_display, inline=True)
     embed.add_field(name='步数', value=str(state.get('steps', 20)), inline=True)
     embed.add_field(name='CFG', value=str(state.get('cfg_scale', 7.0)), inline=True)
+    embed.add_field(name='种子', value=str(state.get('seed', random.randint(0, 2147483647))), inline=True)
     embed.add_field(name='采样器', value=state.get('sampler', 'euler'), inline=True)
     embed.add_field(name='调度器', value=state.get('scheduler', 'normal'), inline=True)
     embed.add_field(name='预设', value=state.get('preset', '未选择'), inline=True)
