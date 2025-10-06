@@ -152,7 +152,7 @@
   },
   "100": {
     "inputs": {
-      "seed": "%seed%",
+      "seed": "123655",
       "steps": "%steps%",
       "cfg": "%cfg_scale%",
       "sampler_name": "%sampler_name%",
