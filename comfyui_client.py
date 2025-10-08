@@ -216,6 +216,9 @@ class ComfyUIClient:
         Returns:
             (成功标志, 输出信息)
         """
+        queue_remaining: Optional[int] = None
+        finished_nodes: set = set()
+
         try:
             async with websockets.connect(
                 f"{self.ws_url}?clientId={self.client_id}",
@@ -243,14 +246,44 @@ class ComfyUIClient:
                         # 执行完成
                         if msg_type == 'executed':
                             msg_data = data.get('data', {})
-                            if msg_data.get('node') is None:
-                                # 整个工作流执行完成
+                            if msg_data.get('prompt_id') and msg_data.get('prompt_id') != prompt_id:
+                                continue
+
+                            node_id = msg_data.get('node')
+                            if node_id:
+                                finished_nodes.add(node_id)
+
+                            output_data = msg_data.get('output', {})
+                            has_images = any(
+                                isinstance(value, list) and value and isinstance(value[0], dict) and 'filename' in value[0]
+                                for value in output_data.values()
+                            )
+
+                            if has_images or (queue_remaining == 0 if queue_remaining is not None else False):
                                 history = await self.get_history(prompt_id)
                                 if history:
                                     logger.info(f"Task {prompt_id} completed successfully")
                                     return True, history.get('outputs', {})
 
-                        # 执行中的进度
+                            if msg_data.get('node') is None:
+                                # Workflow finished
+                                history = await self.get_history(prompt_id)
+                                if history:
+                                    logger.info(f"Task {prompt_id} completed successfully")
+                                    return True, history.get('outputs', {})
+
+                        elif msg_type == 'status':
+                            status_data = data.get('data', {})
+                            exec_info = status_data.get('status', {}).get('exec_info', {})
+                            if isinstance(exec_info, dict) and 'queue_remaining' in exec_info:
+                                queue_remaining = exec_info['queue_remaining']
+                                if queue_remaining == 0 and finished_nodes:
+                                    history = await self.get_history(prompt_id)
+                                    if history:
+                                        logger.info(f"Task {prompt_id} completed successfully (status)")
+                                        return True, history.get('outputs', {})
+
+                        # Progress update
                         elif msg_type == 'progress':
                             progress_data = data.get('data', {})
                             current = progress_data.get('value', 0)
